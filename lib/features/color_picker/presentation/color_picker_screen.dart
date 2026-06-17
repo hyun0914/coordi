@@ -68,12 +68,15 @@ class _ColorPickerScreenState extends ConsumerState<ColorPickerScreen>
     super.dispose();
   }
 
-  void _onTabChanged() => setState(() {});
+  // 애니메이션 중 매 프레임마다 setState 호출 방지 — 탭 전환 완료 시 1회만 재빌드
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) setState(() {});
+  }
 
   Color get _activeColor {
-    if (_tabController.index == 0) return ref.read(wheelColorProvider);
+    if (_tabController.index == 0) return ref.read(wheelColorProvider).toColor();
     return ref.read(selectedExtractedColorProvider) ??
-        ref.read(wheelColorProvider);
+        ref.read(wheelColorProvider).toColor();
   }
 
   /// 현재 단계 색상 확정 후 다음 단계로 이동.
@@ -81,7 +84,7 @@ class _ColorPickerScreenState extends ConsumerState<ColorPickerScreen>
     final color = _activeColor; // 상태 변경 전에 명시적 캡처 (탭 인덱스·provider 리셋보다 먼저)
     _pickedColors.add(color);
     _tabController.animateTo(0);
-    ref.read(wheelColorProvider.notifier).state = const Color(0xFF5C6BC0);
+    ref.read(wheelColorProvider.notifier).state = const HSVColor.fromAHSV(1.0, 231, 0.52, 0.75);
     ref.read(selectedExtractedColorProvider.notifier).state = null;
     ref.read(pickedImageBytesProvider.notifier).state = null;
     ref.read(extractedColorsProvider.notifier).state = [];
@@ -93,8 +96,9 @@ class _ColorPickerScreenState extends ConsumerState<ColorPickerScreen>
     final prevColor = _pickedColors.isNotEmpty ? _pickedColors.removeLast() : null;
     setState(() => _currentStep--);
     _tabController.animateTo(0);
-    ref.read(wheelColorProvider.notifier).state =
-        prevColor ?? const Color(0xFF5C6BC0);
+    ref.read(wheelColorProvider.notifier).state = prevColor != null
+        ? HSVColor.fromColor(prevColor)
+        : const HSVColor.fromAHSV(1.0, 231, 0.52, 0.75);
     ref.read(selectedExtractedColorProvider.notifier).state = null;
     ref.read(pickedImageBytesProvider.notifier).state = null;
     ref.read(extractedColorsProvider.notifier).state = [];
@@ -349,21 +353,27 @@ class _ColorWheelTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final color = ref.watch(wheelColorProvider);
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
+    final hsv   = ref.watch(wheelColorProvider);
+    final color = hsv.toColor();
+    final cs    = Theme.of(context).colorScheme;
+    final tt    = Theme.of(context).textTheme;
+
+    void onHsvChanged(HSVColor v) =>
+        ref.read(wheelColorProvider.notifier).state = v;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
       child: Column(
         children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+          Container(
             width: 96,
             height: 96,
             decoration: BoxDecoration(
               color: color,
               shape: BoxShape.circle,
+              border: color.computeLuminance() > 0.85
+                  ? Border.all(color: cs.outlineVariant, width: 1.5)
+                  : null,
               boxShadow: [
                 BoxShadow(
                   color: color.withValues(alpha: 0.45),
@@ -390,13 +400,26 @@ class _ColorWheelTab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 28),
-          HueRingPicker(
-            pickerColor: color,
-            onColorChanged: (c) =>
-                ref.read(wheelColorProvider.notifier).state = c,
-            displayThumbColor: true,
-            enableAlpha: false,
-            colorPickerHeight: 280,
+          // HueRingPicker(Color 기반) 대신 ColorPickerHueRing + ColorPickerArea 직접 조합.
+          // HSVColor를 end-to-end로 전달하므로 Color 변환이 없고 hue가 절대 손실되지 않음.
+          Padding(
+            padding: const EdgeInsets.all(15),
+            child: Stack(
+              alignment: AlignmentDirectional.center,
+              children: [
+                SizedBox(
+                  width: 280,
+                  height: 280,
+                  child: ColorPickerHueRing(hsv, onHsvChanged,
+                      displayThumbColor: true, strokeWidth: 20),
+                ),
+                SizedBox(
+                  width: 175, // 280 / 1.6 — HueRingPicker 기존 비율 유지
+                  height: 175,
+                  child: ColorPickerArea(hsv, onHsvChanged, PaletteType.hsv),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -648,6 +671,8 @@ class _PaletteChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
 
+    final isLight = color.computeLuminance() > 0.85;
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -658,8 +683,12 @@ class _PaletteChip extends StatelessWidget {
           color: color,
           shape: BoxShape.circle,
           border: Border.all(
-            color: isSelected ? cs.primary : Colors.transparent,
-            width: 3,
+            color: isSelected
+                ? cs.primary
+                : isLight
+                    ? cs.outlineVariant
+                    : Colors.transparent,
+            width: isSelected ? 3 : 1.5,
           ),
           boxShadow: [
             BoxShadow(

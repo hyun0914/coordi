@@ -132,10 +132,12 @@ class ColorRecommendationService {
   }
 
   static bool _isChromatic(ColorMatch m) =>
-      m.color != ReferenceColor.white &&
-      m.color != ReferenceColor.black &&
-      m.color != ReferenceColor.gray &&
-      m.color != ReferenceColor.beige;
+      m.color != ReferenceColor.white    &&
+      m.color != ReferenceColor.black    &&
+      m.color != ReferenceColor.gray     &&
+      m.color != ReferenceColor.beige    &&
+      m.color != ReferenceColor.cream    &&
+      m.color != ReferenceColor.charcoal;
 
   // ─── 카테고리 오프셋 ─────────────────────────────────────────────────────────
 

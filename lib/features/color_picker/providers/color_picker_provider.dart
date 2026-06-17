@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // 뒤로가기로 HomeScreen까지 벗어나면 다음 진입 시 초기값으로 재시작.
 
 /// HSV 색상환 탭에서 실시간으로 선택 중인 색상.
-final wheelColorProvider =
-    StateProvider.autoDispose<Color>((ref) => const Color(0xFF5C6BC0));
+/// HSVColor로 저장하여 흰색/검정 구역에서도 hue가 손실되지 않도록 함.
+final wheelColorProvider = StateProvider.autoDispose<HSVColor>(
+  (ref) => const HSVColor.fromAHSV(1.0, 231, 0.52, 0.75), // ≈ #5C6BC0
+);
 
 /// 이미지 추출 탭 — 선택된 이미지 바이트 (웹 호환: XFile.readAsBytes()).
 final pickedImageBytesProvider =

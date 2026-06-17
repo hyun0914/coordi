@@ -24,7 +24,7 @@ class HomeScreen extends StatelessWidget {
                 children: [
                   _HomeHeader(),
                   const SizedBox(height: 32),
-                  _CategoryGrid(),
+                  _CategoryList(),
                 ],
               ),
             ),
@@ -94,7 +94,7 @@ class _HomeHeader extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          '카테고리를 선택하면 어울리는 색상 조합을 추천해드립니다.\n여러 카테고리를 함께 선택할 수도 있습니다.',
+          '상의·하의·아우터 중 색상을 알고 있는 항목을 선택하면\n신발·양말·모자·가방 색상 조합을 추천해드립니다.',
           style: tt.bodyMedium?.copyWith(
             color: cs.onSurface.withValues(alpha: 0.55),
             height: 1.6,
@@ -105,34 +105,22 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-// ─── 카테고리 그리드 ────────────────────────────────────────────────────────────
+// ─── 카테고리 리스트 ────────────────────────────────────────────────────────────
 
-class _CategoryGrid extends StatelessWidget {
+class _CategoryList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final cols = constraints.maxWidth > 400 ? 3 : 2;
-
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: cols,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.05,
+    return Column(
+      children: [
+        for (final category in ClothingCategory.mainCategories) ...[
+          CategoryCard(
+            category: category,
+            onTap: () => _onTap(context, category),
           ),
-          itemCount: ClothingCategory.values.length,
-          itemBuilder: (context, index) {
-            final category = ClothingCategory.values[index];
-            return CategoryCard(
-              category: category,
-              onTap: () => _onTap(context, category),
-            );
-          },
-        );
-      },
+          if (category != ClothingCategory.mainCategories.last)
+            const SizedBox(height: 12),
+        ],
+      ],
     );
   }
 
@@ -158,8 +146,8 @@ class _CategoryMultiSelectDialog extends StatefulWidget {
 
 class _CategoryMultiSelectDialogState
     extends State<_CategoryMultiSelectDialog> {
-  // 추천 대상이 최소 1개는 남아야 하므로 전체 7개 중 최대 6개까지 허용
-  static const _maxSelect = 6;
+  // 상의/하의/아우터 3개 중 최대 3개 선택 가능 (신발·양말·모자·가방은 항상 추천 대상)
+  static final _maxSelect = ClothingCategory.mainCategories.length;
 
   late final Set<ClothingCategory> _selected;
 
@@ -210,12 +198,10 @@ class _CategoryMultiSelectDialogState
           const SizedBox(height: 4),
           Text(
             _selected.length >= _maxSelect
-                ? '최대 6개까지 선택 가능합니다'
-                : '여러 개 선택 가능 (최대 6개)',
+                ? '모두 선택됨'
+                : '여러 개 선택 가능',
             style: tt.bodySmall?.copyWith(
-              color: _selected.length >= _maxSelect
-                  ? cs.error.withValues(alpha: 0.7)
-                  : cs.onSurface.withValues(alpha: 0.5),
+              color: cs.onSurface.withValues(alpha: 0.5),
             ),
           ),
         ],
@@ -223,7 +209,7 @@ class _CategoryMultiSelectDialogState
       content: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: ClothingCategory.values.map((cat) {
+        children: ClothingCategory.mainCategories.map((cat) {
           final isSelected = _selected.contains(cat);
           final maxReached = _selected.length >= _maxSelect;
           return FilterChip(

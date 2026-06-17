@@ -178,6 +178,8 @@ class _SingleInputRow extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    final isLight = color.computeLuminance() > 0.85;
+
     return Row(
       children: [
         Container(
@@ -186,6 +188,9 @@ class _SingleInputRow extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+            border: isLight
+                ? Border.all(color: cs.outlineVariant, width: 1.5)
+                : null,
             boxShadow: [
               BoxShadow(
                 color: color.withValues(alpha: 0.45),
@@ -235,6 +240,8 @@ class _MultiInputCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
+    final isLight = color.computeLuminance() > 0.85;
+
     return Column(
       children: [
         Container(
@@ -243,6 +250,9 @@ class _MultiInputCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: color,
             shape: BoxShape.circle,
+            border: isLight
+                ? Border.all(color: cs.outlineVariant, width: 1.5)
+                : null,
             boxShadow: [
               BoxShadow(
                 color: color.withValues(alpha: 0.42),
@@ -435,6 +445,8 @@ class _SuggestionCard extends StatelessWidget {
     final colorName = parts.first;
     final detail    = parts.length > 1 ? parts[1] : '';
 
+    final isLight = suggestion.color.computeLuminance() > 0.85;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 14, 10, 12),
       decoration: BoxDecoration(
@@ -453,6 +465,9 @@ class _SuggestionCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: suggestion.color,
               shape: BoxShape.circle,
+              border: isLight
+                  ? Border.all(color: cs.outlineVariant, width: 1.5)
+                  : null,
               boxShadow: [
                 BoxShadow(
                   color: suggestion.color.withValues(alpha: 0.38),
