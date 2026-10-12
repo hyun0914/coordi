@@ -5,6 +5,7 @@ import 'package:coordi/core/constants/color_harmony_type.dart';
 import 'color_recommendation.dart';
 import 'color_suggestion.dart';
 import 'reference_colors.dart';
+import 'season.dart';
 
 class ColorRecommendationService {
   const ColorRecommendationService();
@@ -17,9 +18,12 @@ class ColorRecommendationService {
   ///      다중 입력: 교집합 색상 우선, 나머지는 첫 번째 입력으로 보완.
   ///   3. 입력 카테고리를 제외한 대상 카테고리에 오프셋 균등 분배.
   ///   4. [pointCategory]는 채도 높은 유채색 우선 (포인트 로직).
+  ///
+  /// [season]을 주면 2단계 결과를 계절 톤 색상 위주로 좁힌다 ([_applySeason]).
   ColorRecommendation recommend(
     List<(ClothingCategory, Color)> inputs, {
     ClothingCategory pointCategory = ClothingCategory.socks,
+    Season? season,
   }) {
     final sortedLists = inputs.map((e) {
       final ref = mapToReference(e.$2);
@@ -28,7 +32,7 @@ class ColorRecommendationService {
         ..sort((a, b) => a.grade.index.compareTo(b.grade.index));
     }).toList();
 
-    final merged = _mergeMatchLists(sortedLists);
+    final merged = _applySeason(_mergeMatchLists(sortedLists), season);
 
     final inputCats = {for (final e in inputs) e.$1};
     final targetCats = ClothingCategory.values
@@ -41,6 +45,7 @@ class ColorRecommendationService {
         baseColors: [for (final e in inputs) e.$2],
         baseCategories: [for (final e in inputs) e.$1],
         pointCategory: pointCategory,
+        season: season,
         suggestions: const {},
       );
     }
@@ -58,6 +63,7 @@ class ColorRecommendationService {
       baseColors: [for (final e in inputs) e.$2],
       baseCategories: [for (final e in inputs) e.$1],
       pointCategory: effectivePoint,
+      season: season,
       suggestions: {
         for (final cat in targetCats)
           cat: cat == effectivePoint
@@ -97,6 +103,29 @@ class ColorRecommendationService {
 
     // lists.first는 이미 grade 순 정렬이므로 재정렬 불필요
     return [...common, ...rest];
+  }
+
+  // ─── 계절 톤 ─────────────────────────────────────────────────────────────────
+
+  /// 계절 톤 색상만으로는 카테고리마다 같은 색이 반복되므로, 이 개수까지는 다른 색으로 보충.
+  static const _minSeasonPool = 5;
+
+  /// [matches]를 [season] 톤 색상 위주로 좁힌다 (입력 순서 = 등급 순서 유지).
+  /// 계절 톤 색상이 [_minSeasonPool]개 미만이면 등급이 좋은 나머지 색상으로 보충.
+  static List<ColorMatch> _applySeason(List<ColorMatch> matches, Season? season) {
+    if (season == null) return matches;
+
+    final seasonal = [
+      for (final m in matches)
+        if (season.colors.contains(m.color)) m,
+    ];
+    final others = [
+      for (final m in matches)
+        if (!season.colors.contains(m.color)) m,
+    ]..sort((a, b) => a.grade.index.compareTo(b.grade.index));
+
+    final fill = (_minSeasonPool - seasonal.length).clamp(0, others.length);
+    return [...seasonal, ...others.take(fill)];
   }
 
   // ─── 분배 로직 ───────────────────────────────────────────────────────────────

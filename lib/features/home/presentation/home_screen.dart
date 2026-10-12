@@ -1,6 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:coordi/core/constants/clothing_category.dart';
 import 'package:coordi/features/color_picker/presentation/color_picker_screen.dart';
+import 'package:coordi/features/favorites/presentation/favorites_screen.dart';
+import 'package:coordi/features/recommendation/domain/color_presets.dart';
+import 'package:coordi/features/recommendation/domain/color_recommendation_service.dart';
+import 'package:coordi/features/recommendation/domain/season.dart';
+import 'package:coordi/features/recommendation/presentation/recommendation_screen.dart';
+import 'package:coordi/features/recommendation/providers/recommendation_provider.dart';
+import 'package:coordi/features/wardrobe/presentation/wardrobe_screen.dart';
 import 'package:coordi/shared/widgets/category_card.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -23,8 +31,12 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _HomeHeader(),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
+                  _SeasonSelector(),
+                  const SizedBox(height: 24),
                   _CategoryList(),
+                  const SizedBox(height: 40),
+                  _PresetSection(),
                 ],
               ),
             ),
@@ -52,6 +64,23 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
+      actions: [
+        IconButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const WardrobeScreen()),
+          ),
+          tooltip: '내 옷장',
+          icon: const Icon(Icons.checkroom_outlined),
+        ),
+        IconButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+          ),
+          tooltip: '즐겨찾기',
+          icon: const Icon(Icons.favorite_border),
+        ),
+        const SizedBox(width: 4),
+      ],
     );
   }
 }
@@ -105,6 +134,48 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
+// ─── 계절 톤 선택 ───────────────────────────────────────────────────────────────
+
+class _SeasonSelector extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs       = Theme.of(context).colorScheme;
+    final tt       = Theme.of(context).textTheme;
+    final selected = ref.watch(seasonProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          selected == null
+              ? '계절 톤'
+              : '계절 톤 · ${selected.description}',
+          style: tt.labelMedium?.copyWith(
+            color: cs.onSurface.withValues(alpha: 0.55),
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            // null = 전체
+            for (final Season? season in [null, ...Season.values])
+              ChoiceChip(
+                label: Text(season?.label ?? '전체'),
+                selected: season == selected,
+                onSelected: (_) =>
+                    ref.read(seasonProvider.notifier).state = season,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 // ─── 카테고리 리스트 ────────────────────────────────────────────────────────────
 
 class _CategoryList extends StatelessWidget {
@@ -128,6 +199,138 @@ class _CategoryList extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => _CategoryMultiSelectDialog(initialCategory: category),
+    );
+  }
+}
+
+// ─── 컬러 조합 프리셋 ───────────────────────────────────────────────────────────
+
+class _PresetSection extends ConsumerWidget {
+  static const _gap = 12.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '무드로 시작하기',
+          style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '컬러 조합을 고르면 나머지 색상을 바로 추천해드립니다.',
+          style: tt.bodySmall?.copyWith(
+            color: cs.onSurface.withValues(alpha: 0.55),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 2열 배치
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final cardWidth = (constraints.maxWidth - _gap) / 2;
+            return Wrap(
+              spacing: _gap,
+              runSpacing: _gap,
+              children: [
+                for (final preset in colorPresets)
+                  SizedBox(
+                    width: cardWidth,
+                    child: _PresetCard(
+                      preset: preset,
+                      onTap: () => _onTap(context, ref, preset),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _onTap(BuildContext context, WidgetRef ref, ColorPreset preset) {
+    final recommendation = const ColorRecommendationService().recommend(
+      preset.inputs,
+      season: ref.read(seasonProvider),
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RecommendationScreen(recommendation: recommendation),
+      ),
+    );
+  }
+}
+
+class _PresetCard extends StatelessWidget {
+  const _PresetCard({required this.preset, required this.onTap});
+
+  final ColorPreset preset;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      elevation: 0,
+      color: cs.surfaceContainerLow,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  for (final (_, color) in preset.inputs)
+                    Container(
+                      width: 28,
+                      height: 28,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: color.computeLuminance() > 0.85
+                            ? Border.all(color: cs.outlineVariant, width: 1.5)
+                            : null,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                preset.name,
+                style: tt.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 3),
+              Text(
+                preset.description,
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurface.withValues(alpha: 0.45),
+                  height: 1.4,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

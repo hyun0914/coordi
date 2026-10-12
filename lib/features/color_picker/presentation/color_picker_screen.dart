@@ -7,6 +7,7 @@ import 'package:coordi/core/constants/clothing_category.dart';
 import 'package:coordi/features/color_picker/providers/color_picker_provider.dart';
 import 'package:coordi/features/recommendation/domain/color_recommendation_service.dart';
 import 'package:coordi/features/recommendation/presentation/recommendation_screen.dart';
+import 'package:coordi/features/recommendation/providers/recommendation_provider.dart';
 
 // ─── 화면 진입점 ────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,7 @@ class _ColorPickerScreenState extends ConsumerState<ColorPickerScreen>
     final recommendation = const ColorRecommendationService().recommend(
       inputs,
       pointCategory: _effectivePoint,
+      season: ref.read(seasonProvider),
     );
     Navigator.of(context).push(
       MaterialPageRoute(

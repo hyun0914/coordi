@@ -1,18 +1,115 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:coordi/core/constants/clothing_category.dart';
+import 'package:coordi/features/favorites/providers/favorites_provider.dart';
 import 'package:coordi/features/recommendation/domain/color_recommendation.dart';
 import 'package:coordi/features/recommendation/domain/color_suggestion.dart';
+import 'package:coordi/features/recommendation/domain/reference_colors.dart';
+import 'package:coordi/features/wardrobe/domain/wardrobe.dart';
+import 'package:coordi/features/wardrobe/providers/wardrobe_provider.dart';
 
-class RecommendationScreen extends StatelessWidget {
-  const RecommendationScreen({super.key, required this.recommendation});
+class RecommendationScreen extends ConsumerStatefulWidget {
+  const RecommendationScreen({
+    super.key,
+    required this.recommendation,
+    this.savedId,
+  });
 
   final ColorRecommendation recommendation;
 
+  /// 즐겨찾기에서 진입한 경우 해당 항목의 id. null이면 아직 저장되지 않은 결과.
+  final String? savedId;
+
+  @override
+  ConsumerState<RecommendationScreen> createState() =>
+      _RecommendationScreenState();
+}
+
+class _RecommendationScreenState extends ConsumerState<RecommendationScreen> {
+  // 이미지 내보내기 시 캡처할 영역. 스크롤 밖 영역까지 전체가 캡처된다.
+  final _captureKey = GlobalKey();
+
+  late String? _savedId = widget.savedId;
+  bool _busy = false;
+
+  Future<void> _toggleFavorite() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    final notifier = ref.read(favoritesProvider.notifier);
+    final id       = _savedId;
+    try {
+      if (id == null) {
+        final newId = await notifier.add(widget.recommendation);
+        if (!mounted) return;
+        setState(() => _savedId = newId);
+        _showMessage('즐겨찾기에 저장했습니다');
+      } else {
+        await notifier.remove(id);
+        if (!mounted) return;
+        setState(() => _savedId = null);
+        _showMessage('즐겨찾기에서 삭제했습니다');
+      }
+    } catch (_) {
+      if (mounted) _showMessage('즐겨찾기를 변경하지 못했습니다');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _exportImage(BuildContext buttonContext) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+
+    // iPad 공유 시트의 기준 위치 (await 이전에 계산).
+    final box    = buttonContext.findRenderObject() as RenderBox?;
+    final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+    try {
+      final boundary = _captureKey.currentContext!.findRenderObject()
+          as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 3);
+      final data  = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+
+      // 웹에서 Web Share API를 지원하지 않는 브라우저는 파일 다운로드로 대체된다.
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [
+            XFile.fromData(
+              data!.buffer.asUint8List(),
+              mimeType: 'image/png',
+              name: 'coordi.png',
+            ),
+          ],
+          fileNameOverrides: const ['coordi.png'],
+          sharePositionOrigin: origin,
+        ),
+      );
+    } catch (_) {
+      if (mounted) _showMessage('이미지를 내보내지 못했습니다');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs     = Theme.of(context).colorScheme;
-    final tt     = Theme.of(context).textTheme;
-    final others = recommendation.suggestions.keys.toList();
+    final cs             = Theme.of(context).colorScheme;
+    final tt             = Theme.of(context).textTheme;
+    final recommendation = widget.recommendation;
+    final others         = recommendation.suggestions.keys.toList();
+    final isSaved        = _savedId != null;
+    final Wardrobe wardrobe =
+        ref.watch(wardrobeProvider).valueOrNull ?? const {};
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -25,6 +122,24 @@ class RecommendationScreen extends StatelessWidget {
           '추천 결과',
           style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
+        actions: [
+          if (others.isNotEmpty) ...[
+            IconButton(
+              onPressed: _busy ? null : _toggleFavorite,
+              tooltip: isSaved ? '즐겨찾기 해제' : '즐겨찾기에 저장',
+              icon: Icon(isSaved ? Icons.favorite : Icons.favorite_border),
+              color: isSaved ? cs.primary : null,
+            ),
+            Builder(
+              builder: (buttonContext) => IconButton(
+                onPressed: _busy ? null : () => _exportImage(buttonContext),
+                tooltip: '이미지로 내보내기',
+                icon: const Icon(Icons.ios_share),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
+        ],
       ),
       body: SafeArea(
         child: Center(
@@ -33,9 +148,46 @@ class RecommendationScreen extends StatelessWidget {
             child: CustomScrollView(
               slivers: [
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                    child: _BaseColorHeader(recommendation: recommendation),
+                  child: RepaintBoundary(
+                    key: _captureKey,
+                    // 캡처 이미지가 투명 배경이 되지 않도록 배경색을 함께 그린다.
+                    child: ColoredBox(
+                      color: cs.surface,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          20, 24, 20, others.isEmpty ? 0 : 24,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _BaseColorHeader(recommendation: recommendation),
+                            if (others.isNotEmpty) ...[
+                              Padding(
+                                padding: const EdgeInsets.only(top: 28, bottom: 16),
+                                child: Text(
+                                  '나머지 카테고리 추천',
+                                  style: tt.labelMedium?.copyWith(
+                                    color: cs.onSurface.withValues(alpha: 0.55),
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ),
+                              for (final cat in others) ...[
+                                if (cat != others.first)
+                                  const SizedBox(height: 20),
+                                _CategorySection(
+                                  category: cat,
+                                  suggestions: recommendation.suggestions[cat]!,
+                                  ownedColors: wardrobe[cat] ?? const {},
+                                  isPoint: cat == recommendation.pointCategory,
+                                ),
+                              ],
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 if (others.isEmpty)
@@ -43,36 +195,8 @@ class RecommendationScreen extends StatelessWidget {
                     hasScrollBody: false,
                     child: _EmptyState(),
                   )
-                else ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 28, 20, 4),
-                      child: Text(
-                        '나머지 카테고리 추천',
-                        style: tt.labelMedium?.copyWith(
-                          color: cs.onSurface.withValues(alpha: 0.55),
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 48),
-                    sliver: SliverList.separated(
-                      itemCount: others.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 20),
-                      itemBuilder: (context, i) {
-                        final cat = others[i];
-                        return _CategorySection(
-                          category: cat,
-                          suggestions: recommendation.suggestions[cat]!,
-                          isPoint: cat == recommendation.pointCategory,
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                else
+                  const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
           ),
@@ -95,6 +219,7 @@ class _BaseColorHeader extends StatelessWidget {
     final tt     = Theme.of(context).textTheme;
     final count  = recommendation.baseColors.length;
     final isSingle = count == 1;
+    final season = recommendation.season;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -107,13 +232,36 @@ class _BaseColorHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 라벨
-          Text(
-            isSingle ? '선택한 기준 색상' : '선택한 기준 색상 ($count개)',
-            style: tt.labelMedium?.copyWith(
-              color: cs.primary.withValues(alpha: 0.8),
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isSingle ? '선택한 기준 색상' : '선택한 기준 색상 ($count개)',
+                  style: tt.labelMedium?.copyWith(
+                    color: cs.primary.withValues(alpha: 0.8),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              // 계절 톤 배지
+              if (season != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${season.label} 톤',
+                    style: tt.labelSmall?.copyWith(
+                      color: cs.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 14),
 
@@ -344,11 +492,15 @@ class _CategorySection extends StatelessWidget {
   const _CategorySection({
     required this.category,
     required this.suggestions,
+    required this.ownedColors,
     required this.isPoint,
   });
 
   final ClothingCategory category;
   final List<ColorSuggestion> suggestions;
+
+  /// 내 옷장에서 이 카테고리에 등록된 색상.
+  final Set<ReferenceColor> ownedColors;
   final bool isPoint;
 
   @override
@@ -413,7 +565,13 @@ class _CategorySection extends StatelessWidget {
           children: [
             for (var i = 0; i < suggestions.length; i++) ...[
               if (i > 0) const SizedBox(width: 10),
-              Expanded(child: _SuggestionCard(suggestion: suggestions[i])),
+              Expanded(
+                child: _SuggestionCard(
+                  suggestion: suggestions[i],
+                  isOwned: ownedColors
+                      .contains(mapToReference(suggestions[i].color)),
+                ),
+              ),
             ],
           ],
         ),
@@ -425,9 +583,12 @@ class _CategorySection extends StatelessWidget {
 // ─── 추천 카드 ───────────────────────────────────────────────────────────────────
 
 class _SuggestionCard extends StatelessWidget {
-  const _SuggestionCard({required this.suggestion});
+  const _SuggestionCard({required this.suggestion, required this.isOwned});
 
   final ColorSuggestion suggestion;
+
+  /// 내 옷장에 같은 카테고리·같은 색상이 등록되어 있는지.
+  final bool isOwned;
 
   @override
   Widget build(BuildContext context) {
@@ -453,8 +614,10 @@ class _SuggestionCard extends StatelessWidget {
         color: cs.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.outlineVariant.withValues(alpha: 0.5),
-          width: 0.5,
+          color: isOwned
+              ? cs.primary.withValues(alpha: 0.6)
+              : cs.outlineVariant.withValues(alpha: 0.5),
+          width: isOwned ? 1.5 : 0.5,
         ),
       ),
       child: Column(
@@ -525,6 +688,23 @@ class _SuggestionCard extends StatelessWidget {
               ),
             ),
           ),
+          if (isOwned) ...[
+            const SizedBox(height: 6),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle, size: 12, color: cs.primary),
+                const SizedBox(width: 3),
+                Text(
+                  '보유',
+                  style: tt.labelSmall?.copyWith(
+                    color: cs.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:coordi/main.dart';
 import 'package:coordi/core/constants/clothing_category.dart';
 import 'package:coordi/features/recommendation/domain/color_recommendation_service.dart';
+import 'package:coordi/shared/widgets/category_card.dart';
 
 void main() {
   // ─── 앱 스모크 테스트 ───────────────────────────────────────────────────────────
@@ -14,9 +15,11 @@ void main() {
 
     // Text.rich도 전체 문자열('Coordi')로 탐색됨
     expect(find.text('Coordi'), findsOneWidget);
-    expect(find.byType(GridView), findsOneWidget);
+    // 기준색 입력 대상(상의/하의/아우터)만 카드로 노출된다
+    expect(find.byType(CategoryCard), findsNWidgets(3));
     expect(find.text('상의'), findsOneWidget);
-    expect(find.text('가방'), findsOneWidget);
+    expect(find.text('아우터'), findsOneWidget);
+    expect(find.text('가방'), findsNothing);
   });
 
   testWidgets('카테고리 카드 탭 시 다이얼로그가 열린다', (tester) async {

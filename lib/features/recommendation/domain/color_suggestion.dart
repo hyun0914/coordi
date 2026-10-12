@@ -15,4 +15,20 @@ class ColorSuggestion {
 
   /// 추천 신뢰도. 0.0 ~ 1.0 범위로, 1.0에 가까울수록 잘 어울리는 조합.
   final double confidence;
+
+  factory ColorSuggestion.fromJson(Map<String, dynamic> json) {
+    return ColorSuggestion(
+      color: Color(json['color'] as int),
+      harmonyType: ColorHarmonyType.values.byName(json['harmonyType'] as String),
+      description: json['description'] as String,
+      confidence: (json['confidence'] as num).toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'color': color.toARGB32(),
+        'harmonyType': harmonyType.name,
+        'description': description,
+        'confidence': confidence,
+      };
 }
